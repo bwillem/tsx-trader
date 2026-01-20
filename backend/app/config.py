@@ -6,7 +6,7 @@ class Settings(BaseSettings):
     # App
     APP_NAME: str = "TSX Trader"
     DEBUG: bool = True
-    SECRET_KEY: str
+    SECRET_KEY: str = ""  # Optional for migrations, required for JWT operations
 
     # Database
     DATABASE_URL: str
@@ -14,16 +14,16 @@ class Settings(BaseSettings):
     # Redis
     REDIS_URL: str = "redis://localhost:6379/0"
 
-    # API Keys
-    CLAUDE_API_KEY: str
-    ALPHA_VANTAGE_API_KEY: str
-    REDDIT_CLIENT_ID: str
-    REDDIT_CLIENT_SECRET: str
+    # API Keys (optional for migrations, required for runtime)
+    CLAUDE_API_KEY: str = ""
+    ALPHA_VANTAGE_API_KEY: str = ""
+    REDDIT_CLIENT_ID: str = ""
+    REDDIT_CLIENT_SECRET: str = ""
     REDDIT_USER_AGENT: str = "TSXTrader/1.0"
 
     # Questrade
-    QUESTRADE_CLIENT_ID: str
-    QUESTRADE_CLIENT_SECRET: str
+    QUESTRADE_CLIENT_ID: str = ""
+    QUESTRADE_CLIENT_SECRET: str = ""
     QUESTRADE_REDIRECT_URI: str = "http://localhost:8000/api/v1/questrade/callback"
     QUESTRADE_API_URL: str = "https://api01.iq.questrade.com"
     QUESTRADE_LOGIN_URL: str = "https://login.questrade.com"
