@@ -1,0 +1,108 @@
+name: Monthly Stock Discovery
+
+on:
+  schedule:
+    # 1st of month at 3:00 AM EST = 8:00 AM UTC (standard time), 7:00 AM UTC (DST)
+    - cron: '0 8 1 * *'  # Stock review - 1st of month at 8 AM UTC
+    - cron: '0 9 1 * *'  # New discovery - 1st of month at 9 AM UTC
+
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'Action to perform'
+        required: true
+        type: choice
+        options:
+          - review
+          - discover
+          - full-refresh
+
+jobs:
+  review-stocks:
+    runs-on: ubuntu-latest
+    if: github.event.schedule == '0 8 1 * *' || github.event.inputs.action == 'review' || github.event.inputs.action == 'full-refresh'
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          cd backend
+          pip install -r requirements.txt
+
+      - name: Review existing stocks
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          ALPHA_VANTAGE_API_KEY: ${{ secrets.ALPHA_VANTAGE_API_KEY }}
+          SECRET_KEY: ${{ secrets.SECRET_KEY }}
+        run: |
+          cd backend
+          python -c "
+          from app.database import get_db_context
+          from app.tasks.stock_discovery_tasks import review_existing_stocks
+
+          print('Reviewing existing stocks (checking if still in $300M-$2B range)...')
+          result = review_existing_stocks()
+          print(f'✓ Review complete: {result}')
+          "
+
+  discover-new-stocks:
+    runs-on: ubuntu-latest
+    needs: review-stocks
+    if: |
+      always() &&
+      (github.event.schedule == '0 9 1 * *' || github.event.inputs.action == 'discover' || github.event.inputs.action == 'full-refresh') &&
+      (needs.review-stocks.result == 'success' || needs.review-stocks.result == 'skipped')
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          cd backend
+          pip install -r requirements.txt
+
+      - name: Discover new stocks
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          ALPHA_VANTAGE_API_KEY: ${{ secrets.ALPHA_VANTAGE_API_KEY }}
+          SECRET_KEY: ${{ secrets.SECRET_KEY }}
+        run: |
+          cd backend
+          python -c "
+          from app.database import get_db_context
+          from app.tasks.stock_discovery_tasks import discover_new_stocks
+
+          print('Discovering new TSX stocks in $300M-$2B range...')
+          result = discover_new_stocks()
+          print(f'✓ Discovery complete: {result}')
+          "
+
+      - name: Show updated stock count
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          SECRET_KEY: ${{ secrets.SECRET_KEY }}
+        run: |
+          cd backend
+          python -c "
+          from app.database import get_db_context
+          from app.models.stock import Stock
+
+          with get_db_context() as db:
+              active = db.query(Stock).filter(Stock.is_active == True).count()
+              total = db.query(Stock).count()
+              print(f'Active stocks: {active}')
+              print(f'Total stocks (including inactive): {total}')
+          "

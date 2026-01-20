@@ -12,6 +12,7 @@ celery_app = Celery(
         "app.tasks.market_data_tasks",
         "app.tasks.sentiment_tasks",
         "app.tasks.trading_tasks",
+        "app.tasks.stock_discovery_tasks",
     ],
 )
 
@@ -53,5 +54,20 @@ celery_app.conf.beat_schedule = {
     "monitor-stop-losses": {
         "task": "app.tasks.trading_tasks.monitor_stop_losses",
         "schedule": crontab(minute="*/5", hour="9-16", day_of_week="1-5"),  # Every 5 min, 9 AM-4 PM
+    },
+    # Update fundamental data weekly (slow - ~1 min per stock)
+    "update-fundamental-data-weekly": {
+        "task": "app.tasks.market_data_tasks.update_fundamental_data",
+        "schedule": crontab(hour=2, minute=0, day_of_week=6),  # Saturdays at 2 AM
+    },
+    # Review existing stocks monthly (check if still in range)
+    "review-stocks-monthly": {
+        "task": "app.tasks.stock_discovery_tasks.review_existing_stocks",
+        "schedule": crontab(hour=3, minute=0, day_of_month=1),  # 1st of month at 3 AM
+    },
+    # Discover new stocks monthly (add new candidates)
+    "discover-new-stocks-monthly": {
+        "task": "app.tasks.stock_discovery_tasks.discover_new_stocks",
+        "schedule": crontab(hour=4, minute=0, day_of_month=1),  # 1st of month at 4 AM
     },
 }

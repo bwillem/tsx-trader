@@ -1,0 +1,234 @@
+name: Daily Multibagger Analysis
+
+on:
+  schedule:
+    # Market open: 9:30 AM EST = 2:30 PM UTC (standard time), 1:30 PM UTC (DST)
+    - cron: '30 14 * * 1-5'  # Weekdays at 2:30 PM UTC
+
+    # Market close: 4:00 PM EST = 9:00 PM UTC (standard time), 8:00 PM UTC (DST)
+    - cron: '0 21 * * 1-5'  # Weekdays at 9:00 PM UTC
+
+  workflow_dispatch:  # Allow manual trigger
+
+jobs:
+  multibagger-screening:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          cd backend
+          pip install -r requirements.txt
+
+      - name: Run multibagger screening
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          SECRET_KEY: ${{ secrets.SECRET_KEY }}
+        run: |
+          cd backend
+          python -c "
+          from app.database import get_db_context
+          from app.services.screening.multibagger_screener import MultibaggerScreener
+
+          with get_db_context() as db:
+              screener = MultibaggerScreener(
+                  min_fcf_price_ratio=0.05,
+                  min_book_to_market=0.40,
+                  min_market_cap=300_000_000,
+                  max_market_cap=2_000_000_000,
+              )
+
+              print('🔍 MULTIBAGGER SCREENING RESULTS\\n')
+
+              results = screener.screen(db, limit=10)
+
+              if not results:
+                  print('No stocks passed all filters.')
+                  print('This is normal if fundamental data hasn\'t been fetched yet.')
+              else:
+                  print(f'Found {len(results)} potential multibagger candidates:\\n')
+
+                  for i, (stock, fundamentals, score) in enumerate(results, 1):
+                      print(f'{i}. {stock.symbol} - {stock.name}')
+                      print(f'   Sector: {stock.sector}')
+                      print(f'   MULTIBAGGER SCORE: {score:.1f}/100')
+                      print(f'   FCF/Price: {fundamentals.fcf_price_ratio:.2%}')
+                      print(f'   Book/Market: {fundamentals.book_to_market:.2f}')
+                      print(f'   ROA: {fundamentals.roa:.2%}' if fundamentals.roa else '   ROA: N/A')
+                      print()
+
+              # Get stats
+              stats = screener.get_screening_stats(db)
+              print(f'\\n📊 SCREENING STATISTICS')
+              print(f'Total stocks with fundamentals: {stats[\"total_stocks_with_fundamentals\"]}')
+              print(f'Passing FCF/Price filter (≥5%): {stats[\"passing_fcf_filter\"]}')
+              print(f'Passing B/M filter (≥0.40): {stats[\"passing_bm_filter\"]}')
+              print(f'Passing size filter ($300M-$2B): {stats[\"passing_size_filter\"]}')
+              print(f'Passing ALL filters: {stats[\"passing_all_filters\"]}')
+          "
+
+  claude-analysis:
+    runs-on: ubuntu-latest
+    needs: multibagger-screening
+    if: always() && needs.multibagger-screening.result == 'success'
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          cd backend
+          pip install -r requirements.txt
+
+      - name: Create user if needed
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          SECRET_KEY: ${{ secrets.SECRET_KEY }}
+        run: |
+          cd backend
+          python -c "
+          from app.database import get_db_context
+          from app.models.user import User, UserSettings
+          from passlib.context import CryptContext
+
+          with get_db_context() as db:
+              user = db.query(User).first()
+              if not user:
+                  print('Creating system user for automated analysis...')
+                  pwd_context = CryptContext(schemes=['bcrypt'], deprecated='auto')
+
+                  user = User(
+                      email='system@tsx-trader.ai',
+                      hashed_password=pwd_context.hash('automated-system'),
+                      is_active=True
+                  )
+                  db.add(user)
+                  db.flush()
+
+                  settings = UserSettings(
+                      user_id=user.id,
+                      auto_trading_enabled=False,  # Analysis only
+                      position_size_pct=0.20,
+                      stop_loss_pct=0.05
+                  )
+                  db.add(settings)
+                  db.commit()
+                  print(f'✓ Created user: {user.email}')
+              else:
+                  print(f'✓ User already exists: {user.email}')
+          "
+
+      - name: Run Claude trading analysis
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          CLAUDE_API_KEY: ${{ secrets.CLAUDE_API_KEY }}
+          ALPHA_VANTAGE_API_KEY: ${{ secrets.ALPHA_VANTAGE_API_KEY }}
+          REDDIT_CLIENT_ID: ${{ secrets.REDDIT_CLIENT_ID }}
+          REDDIT_CLIENT_SECRET: ${{ secrets.REDDIT_CLIENT_SECRET }}
+          REDDIT_USER_AGENT: 'TSXTrader/1.0'
+          SECRET_KEY: ${{ secrets.SECRET_KEY }}
+        run: |
+          cd backend
+          python -c "
+          from app.database import get_db_context
+          from app.models.user import User
+          from app.services.chat.claude_trader import ClaudeTrader
+          from app.services.screening.multibagger_screener import MultibaggerScreener
+
+          with get_db_context() as db:
+              # Get top multibagger candidates
+              screener = MultibaggerScreener(
+                  min_fcf_price_ratio=0.05,
+                  min_book_to_market=0.40,
+                  min_market_cap=300_000_000,
+                  max_market_cap=2_000_000_000,
+              )
+
+              results = screener.screen(db, limit=5)  # Analyze top 5
+
+              if not results:
+                  print('No multibagger candidates to analyze.')
+                  exit(0)
+
+              # Get user for analysis
+              user = db.query(User).first()
+
+              trader = ClaudeTrader(db, user)
+
+              print('\\n🤖 CLAUDE MULTIBAGGER ANALYSIS\\n')
+
+              for stock, fundamentals, score in results:
+                  print(f'\\n{'='*60}')
+                  print(f'Analyzing {stock.symbol} - {stock.name}')
+                  print(f'Multibagger Score: {score:.1f}/100')
+                  print(f'{'='*60}')
+
+                  try:
+                      decision = trader.analyze_symbol(stock.symbol)
+
+                      print(f'\\nDecision: {decision.decision.upper()}')
+                      print(f'Confidence: {decision.confidence:.0%}')
+                      print(f'\\nReasoning:\\n{decision.reasoning[:500]}...')
+
+                      if decision.suggested_action:
+                          import json
+                          action = json.loads(decision.suggested_action)
+                          print(f'\\nSuggested Action:')
+                          print(f'  Quantity: {action.get(\"quantity\")} shares')
+                          print(f'  Entry: \${action.get(\"entry_price\"):.2f}')
+                          print(f'  Stop Loss: \${action.get(\"stop_loss_price\"):.2f}')
+
+                  except Exception as e:
+                      print(f'Error analyzing {stock.symbol}: {e}')
+
+              print(f'\\n✓ Analysis complete. Check trading_decisions table for all results.')
+          "
+
+      - name: Show latest recommendations
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          SECRET_KEY: ${{ secrets.SECRET_KEY }}
+        run: |
+          cd backend
+          python -c "
+          from app.database import get_db_context
+          from app.models.decision import TradingDecision
+          from app.models.stock import Stock
+          from sqlalchemy import desc
+          from datetime import datetime, timedelta
+
+          with get_db_context() as db:
+              # Get decisions from last 24 hours
+              yesterday = datetime.utcnow() - timedelta(days=1)
+
+              decisions = (
+                  db.query(TradingDecision, Stock)
+                  .join(Stock)
+                  .filter(TradingDecision.created_at >= yesterday)
+                  .order_by(desc(TradingDecision.confidence))
+                  .limit(5)
+                  .all()
+              )
+
+              print('\\n📈 TOP RECOMMENDATIONS (Last 24h)\\n')
+
+              if not decisions:
+                  print('No recent recommendations.')
+              else:
+                  for decision, stock in decisions:
+                      print(f'{stock.symbol}: {decision.decision.upper()} ({decision.confidence:.0%} confidence)')
+          "

@@ -1,22 +1,48 @@
-# TSX Stock Trading Analysis System
+# TSX Multibagger Stock Trader
 
-An AI-powered stock analysis system for the Toronto Stock Exchange (TSX) with Claude integration.
+An AI-powered stock analysis system for finding multibagger stocks on the Toronto Stock Exchange (TSX). Based on peer-reviewed research: *"The Alchemy of Multibagger Stocks"* (Yartseva, 2025).
+
+## 🚀 100% Automated Mode
+
+**Set it and forget it.** This system runs completely automatically via GitHub Actions:
+
+- ✅ **Daily**: Screens stocks using Yartseva's multibagger filters (FCF/Price, Book/Market, ROA)
+- ✅ **Daily**: Claude AI analyzes top candidates and generates buy/hold/sell recommendations
+- ✅ **Weekly**: Updates fundamental data (quarterly financials)
+- ✅ **Monthly**: Discovers new TSX small caps ($300M-$2B range)
+
+**See [AUTOMATION_SETUP.md](AUTOMATION_SETUP.md) for one-time setup (5 minutes) → never run scripts again!**
 
 ## ⚠️ ANALYSIS-ONLY MODE (Questrade Compliant)
 
-This system operates in **analysis-only mode** to comply with Questrade's API Terms of Service. Claude provides trading recommendations with detailed reasoning, but **does NOT execute trades automatically**. You review and execute each trade manually through Questrade.
+This system operates in **analysis-only mode**. Claude provides trading recommendations with detailed reasoning, but **does NOT execute trades automatically**. You review and execute each trade manually through your broker.
 
 See [ANALYSIS_ONLY_MODE.md](ANALYSIS_ONLY_MODE.md) for details.
 
 ## Features
 
-- **AI Trading Analysis**: Claude AI analyzes market data, technical indicators, and sentiment to provide trading recommendations
-- **Risk Management**: Built-in position sizing, stop-loss calculations, and risk validation
-- **Data Collection**:
-  - Alpha Vantage for market data and technical indicators
-  - Reddit sentiment analysis from r/CanadianInvestor and r/Baystreetbets
-- **Questrade Integration**: OAuth authentication and portfolio monitoring
-- **API Access**: REST API with detailed documentation for programmatic access
+### 🎯 Multibagger Screening (Yartseva 2025)
+- **FCF/Price ratio** (free cash flow yield) - strongest predictor of 10x returns
+- **Book-to-Market ratio** > 0.40 - value factor
+- **Small cap focus** ($300M-$2B) - sweet spot for multibaggers
+- **Reinvestment quality** - asset growth ≤ EBITDA growth
+- **Entry timing** - near 52-week lows with negative momentum
+
+### 🤖 AI Trading Analysis
+- **Hybrid approach**: Fundamental + Technical + Sentiment analysis
+- **Claude Sonnet 4.5**: Analyzes top candidates with detailed reasoning
+- **Risk management**: Position sizing, stop-loss calculations, risk validation
+- **Automated screening**: Runs 2x daily (market open & close)
+
+### 📊 Data Collection
+- **Alpha Vantage**: Quarterly financials, market data, technical indicators
+- **Reddit sentiment**: r/CanadianInvestor, r/Baystreetbets
+- **Stock discovery**: Automated monthly updates to stock universe
+
+### 📈 Portfolio Integration
+- **Questrade API**: OAuth authentication, portfolio monitoring
+- **Manual execution**: Review recommendations, execute trades yourself
+- **REST API**: Programmatic access to all data
 
 ## Architecture
 
@@ -27,23 +53,31 @@ See [ANALYSIS_ONLY_MODE.md](ANALYSIS_ONLY_MODE.md) for details.
 
 ## Deployment Options
 
-### Option 1: GitHub Actions + Cloud Database (Recommended - Free!)
+### Option 1: 🤖 Fully Automated via GitHub Actions (Recommended)
 
-Run scheduled tasks in the cloud without your laptop needing to be on.
+**Zero ongoing work required.** Run everything in the cloud - never touch a script again.
 
-**Prerequisites**:
-- GitHub account
-- Neon database (free tier)
-- Upstash Redis (free tier)
+**What runs automatically:**
+- Hourly: Market data updates
+- Every 30 min: Sentiment analysis
+- 2x daily: Multibagger screening + Claude analysis
+- Weekly: Fundamental data updates
+- Monthly: Stock discovery
+
+**Prerequisites:**
+- GitHub account (free)
+- Neon PostgreSQL database (free tier - already set up)
 - API keys (Claude, Alpha Vantage, Reddit)
 
-**Cost**: ~$3-6/month (Claude API usage only)
+**Cost:** ~$1-2/month (Claude API only)
 
-See **[GITHUB_ACTIONS_DEPLOYMENT.md](GITHUB_ACTIONS_DEPLOYMENT.md)** for full setup guide.
+**Setup time:** 5 minutes
+
+**See [AUTOMATION_SETUP.md](AUTOMATION_SETUP.md) for complete guide.**
 
 ### Option 2: Local Docker (Development/Testing)
 
-Run everything on your laptop for development.
+Run everything on your laptop for development or testing.
 
 **Prerequisites**:
 - Docker and Docker Compose

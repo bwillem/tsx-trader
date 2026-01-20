@@ -1,0 +1,61 @@
+name: Weekly Fundamental Data Update
+
+on:
+  schedule:
+    # Saturdays at 2:00 AM EST = 7:00 AM UTC (standard time), 6:00 AM UTC (DST)
+    - cron: '0 7 * * 6'  # Every Saturday at 7 AM UTC
+
+  workflow_dispatch:  # Allow manual trigger
+
+jobs:
+  update-fundamentals:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90  # ~40 min for 37 stocks + buffer
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          cd backend
+          pip install -r requirements.txt
+
+      - name: Update fundamental data for all stocks
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          ALPHA_VANTAGE_API_KEY: ${{ secrets.ALPHA_VANTAGE_API_KEY }}
+          SECRET_KEY: ${{ secrets.SECRET_KEY }}
+        run: |
+          cd backend
+          python -c "
+          from app.database import get_db_context
+          from app.tasks.market_data_tasks import update_fundamental_data
+
+          print('Starting weekly fundamental data update...')
+          print('This will take ~40 minutes for 37 stocks (API rate limits)')
+
+          result = update_fundamental_data()
+
+          print(f'\n✓ Update complete: {result}')
+          "
+
+      - name: Verify fundamental data
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          SECRET_KEY: ${{ secrets.SECRET_KEY }}
+        run: |
+          cd backend
+          python -c "
+          from app.database import get_db_context
+          from app.models.fundamentals import FundamentalDataQuarterly
+          from sqlalchemy import func
+
+          with get_db_context() as db:
+              count = db.query(func.count(FundamentalDataQuarterly.id)).scalar()
+              print(f'Total fundamental data records: {count}')
+          "

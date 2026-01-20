@@ -1,5 +1,6 @@
 from .user import User, UserSettings
 from .stock import Stock, MarketDataDaily
+from .fundamentals import FundamentalDataQuarterly, FundamentalDataAnnual
 from .sentiment import SentimentPost, SentimentStockMention
 from .trade import TradeOrder, TradeExecution, Position
 from .portfolio import PortfolioSnapshot
@@ -11,6 +12,8 @@ __all__ = [
     "UserSettings",
     "Stock",
     "MarketDataDaily",
+    "FundamentalDataQuarterly",
+    "FundamentalDataAnnual",
     "SentimentPost",
     "SentimentStockMention",
     "TradeOrder",

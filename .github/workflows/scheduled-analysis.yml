@@ -1,14 +1,7 @@
-name: Scheduled Trading Analysis
+name: Market Data & Sentiment Updates
 
 on:
   schedule:
-    # Market open: 9:30 AM EST = 2:30 PM UTC (during standard time), 1:30 PM UTC (during DST)
-    # Using 2:30 PM UTC to be safe
-    - cron: '30 14 * * 1-5'  # trading-analysis-morning
-
-    # Market close: 4:00 PM EST = 9:00 PM UTC (standard time), 8:00 PM UTC (DST)
-    - cron: '0 21 * * 1-5'  # trading-analysis-close
-
     # Sentiment update every 30 minutes during trading hours (9 AM - 5 PM EST = 2 PM - 10 PM UTC)
     - cron: '0,30 14-21 * * 1-5'  # sentiment-update
 
@@ -26,12 +19,11 @@ on:
           - all
           - market-data
           - sentiment
-          - trading-analysis
 
 jobs:
   market-data-update:
     runs-on: ubuntu-latest
-    if: github.event.schedule == '0 * * * *' || github.event.inputs.task == 'all' || github.event.inputs.task == 'market-data'
+    if: github.event_name == 'schedule' || github.event.inputs.task == 'all' || github.event.inputs.task == 'market-data'
 
     steps:
       - uses: actions/checkout@v3
@@ -62,7 +54,7 @@ jobs:
 
   sentiment-update:
     runs-on: ubuntu-latest
-    if: github.event.schedule == '0,30 14-21 * * 1-5' || github.event.inputs.task == 'all' || github.event.inputs.task == 'sentiment'
+    if: github.event_name == 'schedule' || github.event.inputs.task == 'all' || github.event.inputs.task == 'sentiment'
 
     steps:
       - uses: actions/checkout@v3
@@ -91,39 +83,4 @@ jobs:
           from app.tasks.sentiment_tasks import update_sentiment_data
           result = update_sentiment_data()
           print('Sentiment update result:', result)
-          "
-
-  trading-analysis:
-    runs-on: ubuntu-latest
-    if: github.event.schedule == '30 14 * * 1-5' || github.event.schedule == '0 21 * * 1-5' || github.event.inputs.task == 'all' || github.event.inputs.task == 'trading-analysis'
-
-    steps:
-      - uses: actions/checkout@v3
-
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.11'
-
-      - name: Install dependencies
-        run: |
-          cd backend
-          pip install -r requirements.txt
-
-      - name: Run trading analysis
-        env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          REDIS_URL: ${{ secrets.REDIS_URL }}
-          CLAUDE_API_KEY: ${{ secrets.CLAUDE_API_KEY }}
-          ALPHA_VANTAGE_API_KEY: ${{ secrets.ALPHA_VANTAGE_API_KEY }}
-          REDDIT_CLIENT_ID: ${{ secrets.REDDIT_CLIENT_ID }}
-          REDDIT_CLIENT_SECRET: ${{ secrets.REDDIT_CLIENT_SECRET }}
-          REDDIT_USER_AGENT: 'TSXTrader/1.0'
-          SECRET_KEY: ${{ secrets.SECRET_KEY }}
-        run: |
-          cd backend
-          python -c "
-          from app.tasks.trading_tasks import run_trading_analysis
-          result = run_trading_analysis()
-          print('Trading analysis result:', result)
           "

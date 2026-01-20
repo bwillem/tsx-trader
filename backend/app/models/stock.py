@@ -16,6 +16,8 @@ class Stock(Base, TimestampMixin):
 
     # Relationships
     market_data = relationship("MarketDataDaily", back_populates="stock")
+    fundamental_data = relationship("FundamentalDataQuarterly", back_populates="stock")
+    fundamental_data_annual = relationship("FundamentalDataAnnual", back_populates="stock")
     sentiment_mentions = relationship("SentimentStockMention", back_populates="stock")
     positions = relationship("Position", back_populates="stock")
     orders = relationship("TradeOrder", back_populates="stock")

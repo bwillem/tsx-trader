@@ -6,6 +6,7 @@ from sqlalchemy import desc
 from app.config import get_settings
 from app.models.user import User
 from app.models.stock import Stock, MarketDataDaily
+from app.models.fundamentals import FundamentalDataQuarterly
 from app.models.trade import Position, OrderSide, OrderType
 from app.models.decision import TradingDecision
 from app.models.portfolio import PortfolioSnapshot
@@ -129,13 +130,120 @@ class ClaudeTrader:
         """Get sentiment analysis for a stock"""
         return self.reddit_scraper.get_stock_sentiment_summary(self.db, symbol, days)
 
+    def _get_fundamental_context(self, symbol: str) -> Optional[Dict]:
+        """Get fundamental data for multibagger screening (Yartseva's metrics)
+
+        Returns the latest quarterly fundamental data including:
+        - FCF/Price (free cash flow yield) - STRONGEST PREDICTOR
+        - Book-to-Market ratio - value factor
+        - ROA - profitability
+        - Reinvestment quality flags
+        """
+        stock = self.db.query(Stock).filter(Stock.symbol == symbol).first()
+        if not stock:
+            return None
+
+        # Get latest fundamental data
+        fundamentals = (
+            self.db.query(FundamentalDataQuarterly)
+            .filter(FundamentalDataQuarterly.stock_id == stock.id)
+            .order_by(desc(FundamentalDataQuarterly.fiscal_date))
+            .first()
+        )
+
+        if not fundamentals:
+            return None
+
+        # Calculate 52-week high/low for context
+        one_year_ago = datetime.now() - timedelta(days=365)
+        market_data = (
+            self.db.query(MarketDataDaily)
+            .filter(
+                MarketDataDaily.stock_id == stock.id,
+                MarketDataDaily.date >= one_year_ago.date()
+            )
+            .all()
+        )
+
+        high_52w = max(md.high for md in market_data) if market_data else None
+        low_52w = min(md.low for md in market_data) if market_data else None
+        current_price = market_data[-1].close if market_data else None
+
+        distance_from_low = None
+        if current_price and low_52w and low_52w > 0:
+            distance_from_low = ((current_price - low_52w) / low_52w) * 100
+
+        return {
+            "fiscal_date": fundamentals.fiscal_date,
+            # Market data
+            "market_cap": fundamentals.market_cap,
+            "market_cap_category": self._categorize_market_cap(fundamentals.market_cap),
+            # Yartseva's key predictors
+            "fcf_price_ratio": fundamentals.fcf_price_ratio,
+            "book_to_market": fundamentals.book_to_market,
+            "roa": fundamentals.roa,
+            "roe": fundamentals.roe,
+            # Profitability
+            "ebitda_margin": fundamentals.ebitda_margin,
+            "ebit_margin": fundamentals.ebit_margin,
+            "is_profitable": fundamentals.is_profitable,
+            # Growth metrics
+            "asset_growth_rate": fundamentals.asset_growth_rate,
+            "ebitda_growth_rate": fundamentals.ebitda_growth_rate,
+            "revenue_growth_rate": fundamentals.revenue_growth_rate,
+            # Quality flags
+            "has_negative_equity": fundamentals.has_negative_equity,
+            "reinvestment_quality_flag": fundamentals.reinvestment_quality_flag,
+            # Technical context for entry timing
+            "distance_from_52w_low": distance_from_low,
+            "passes_yartseva_filters": self._check_yartseva_filters(fundamentals),
+        }
+
+    def _categorize_market_cap(self, market_cap: Optional[float]) -> str:
+        """Categorize market cap size"""
+        if not market_cap:
+            return "Unknown"
+        elif market_cap < 300_000_000:
+            return "Micro Cap (<$300M)"
+        elif market_cap < 2_000_000_000:
+            return "Small Cap ($300M-$2B) ⭐ MULTIBAGGER RANGE"
+        elif market_cap < 10_000_000_000:
+            return "Mid Cap ($2B-$10B)"
+        else:
+            return "Large Cap (>$10B)"
+
+    def _check_yartseva_filters(self, fundamentals: FundamentalDataQuarterly) -> Dict[str, bool]:
+        """Check which Yartseva filters the stock passes
+
+        Returns dict of filter names and pass/fail status
+        """
+        return {
+            "high_fcf_yield": fundamentals.fcf_price_ratio and fundamentals.fcf_price_ratio >= 0.05,
+            "value_stock": fundamentals.book_to_market and fundamentals.book_to_market >= 0.40,
+            "profitable": fundamentals.is_profitable,
+            "no_negative_equity": not fundamentals.has_negative_equity,
+            "good_reinvestment": fundamentals.reinvestment_quality_flag if fundamentals.reinvestment_quality_flag is not None else False,
+            "small_cap": fundamentals.market_cap and 300_000_000 <= fundamentals.market_cap <= 2_000_000_000,
+        }
+
     def _build_analysis_prompt(self, symbol: str) -> str:
         """Build prompt for Claude with all relevant context"""
         portfolio = self._get_portfolio_context()
         market_data = self._get_market_data_context(symbol)
         sentiment = self._get_sentiment_context(symbol)
+        fundamentals = self._get_fundamental_context(symbol)
 
-        prompt = f"""You are an AI trading assistant for an aggressive TSX stock trader. Analyze the following data and provide a trading recommendation.
+        prompt = f"""You are an AI trading assistant using a HYBRID FUNDAMENTAL + TECHNICAL approach for multibagger stock discovery.
+
+Your analysis is based on peer-reviewed research: "The Alchemy of Multibagger Stocks" (Yartseva, 2025) which analyzed 464 stocks that achieved 10x+ returns from 2009-2024.
+
+KEY RESEARCH FINDINGS (Yartseva 2025):
+1. FCF/Price (free cash flow yield) - STRONGEST PREDICTOR (regression coefficients 46-82)
+2. Book-to-Market ratio > 0.40 + positive profitability
+3. Small caps ($300M-$2B) outperform large caps (median starting cap $348M)
+4. Reinvestment quality: Asset growth ≤ EBITDA growth (growth > EBITDA is NEGATIVE signal)
+5. Entry timing: Stocks near 12-month lows with NEGATIVE 3-6 month momentum (mean reversion)
+6. AVOID: Negative equity, high P/E without cash flow
 
 NOTE: This is ANALYSIS-ONLY mode. You will provide recommendations but NOT execute trades. The trader will review and execute manually.
 
@@ -147,9 +255,55 @@ PORTFOLIO STATUS:
 
 """
 
+        # Add fundamental data section if available
+        if fundamentals:
+            filters = fundamentals['passes_yartseva_filters']
+            prompt += f"""
+FUNDAMENTAL ANALYSIS for {symbol} (as of {fundamentals['fiscal_date']}):
+
+MULTIBAGGER SCREENING (Yartseva Criteria):
+  ✓ = Passes filter, ✗ = Fails filter
+
+  FCF/Price (free cash flow yield): {fundamentals['fcf_price_ratio']:.2%} {'✓ ⭐ STRONGEST PREDICTOR' if filters['high_fcf_yield'] else '✗ Below 5% threshold'}
+  Book/Market ratio:                {fundamentals['book_to_market']:.2f} {'✓ Value stock (>0.40)' if filters['value_stock'] else '✗ Not a value stock'}
+  Market Cap:                        ${fundamentals['market_cap']:,.0f} ({fundamentals['market_cap_category']})
+                                     {'✓ Small cap sweet spot' if filters['small_cap'] else '✗ Outside multibagger range'}
+  Profitable:                        {'✓ Yes' if filters['profitable'] else '✗ No'}
+  Negative Equity:                   {'✓ No (good)' if filters['no_negative_equity'] else '✗ Yes (RED FLAG - AVOID)'}
+
+PROFITABILITY METRICS:
+  ROA (Return on Assets):            {fundamentals['roa']:.2%} {'(Good)' if fundamentals['roa'] and fundamentals['roa'] > 0.05 else '(Low)'}
+  ROE (Return on Equity):            {fundamentals['roe']:.2%}
+  EBITDA Margin:                     {fundamentals['ebitda_margin']:.2%} {'(Good)' if fundamentals['ebitda_margin'] and fundamentals['ebitda_margin'] > 0.10 else '(Modest)'}
+
+"""
+            # Add growth metrics if available
+            if fundamentals['asset_growth_rate'] is not None and fundamentals['ebitda_growth_rate'] is not None:
+                prompt += f"""GROWTH QUALITY (YoY):
+  Asset Growth:                      {fundamentals['asset_growth_rate']:.1%}
+  EBITDA Growth:                     {fundamentals['ebitda_growth_rate']:.1%}
+  Revenue Growth:                    {fundamentals['revenue_growth_rate']:.1%}
+  Reinvestment Quality:              {'✓ Good (Asset ≤ EBITDA)' if filters['good_reinvestment'] else '⚠ Poor (Asset > EBITDA)'}
+
+"""
+        else:
+            prompt += f"""
+FUNDAMENTAL ANALYSIS for {symbol}:
+  ⚠ No fundamental data available yet. Analysis will rely on technical + sentiment only.
+  Recommend fetching fundamental data to enable multibagger screening.
+
+"""
+
         if market_data:
-            prompt += f"""MARKET DATA for {symbol}:
-- Current Price: ${market_data['current_price']:.2f}
+            prompt += f"""TECHNICAL ANALYSIS for {symbol}:
+- Current Price: ${market_data['current_price']:.2f}"""
+
+            # Add entry timing context if we have fundamentals
+            if fundamentals and fundamentals.get('distance_from_52w_low') is not None:
+                prompt += f"""
+- Distance from 52-week low: +{fundamentals['distance_from_52w_low']:.1f}% {'✓ Near lows (good entry)' if fundamentals['distance_from_52w_low'] < 20 else '⚠ Not near lows'}"""
+
+            prompt += f"""
 - Technical Signal: {market_data['technical_signal']}
 - RSI(14): {market_data['rsi_14']:.2f if market_data['rsi_14'] else 'N/A'}
 - Price above SMA(20): {'Yes' if market_data['sma_20'] and market_data['current_price'] > market_data['sma_20'] else 'No'}
@@ -171,15 +325,41 @@ TRADING PARAMETERS:
 - Min Risk/Reward: 2:1
 - Max Open Positions: 10
 
+DECISION FRAMEWORK (Hybrid Fundamental + Technical):
+
+STEP 1 - FUNDAMENTAL SCREENING (Yartseva's multibagger criteria):
+  - PRIORITY 1: High FCF/Price (≥5%) - This is the STRONGEST predictor
+  - PRIORITY 2: Book/Market > 0.40 with profitability
+  - PRIORITY 3: Small cap ($300M-$2B)
+  - PRIORITY 4: Good reinvestment quality (Asset growth ≤ EBITDA growth)
+  - RED FLAG: Negative equity (automatic disqualifier)
+
+STEP 2 - ENTRY TIMING (Technical signals):
+  - BEST: Stock near 52-week lows (Yartseva: buy near lows for mean reversion)
+  - BEST: Negative 3-6 month momentum (contrary to typical trend following)
+  - GOOD: RSI oversold (<30) or neutral (30-70)
+  - GOOD: Positive sentiment shift
+  - AVOID: Near 52-week highs with momentum exhaustion
+
+STEP 3 - DECISION LOGIC:
+  - STRONG BUY: Passes 4+ Yartseva filters + good entry timing
+  - BUY: Passes 3+ filters + acceptable timing
+  - HOLD: Passes 2-3 filters but poor timing OR existing position still valid
+  - SELL/CLOSE: Fails key filters (negative equity, low FCF) OR stop loss triggered
+
 Based on this analysis, provide a trading decision:
 1. Should I BUY, SELL, HOLD, or CLOSE an existing position?
 2. If buying, suggest:
    - Number of shares (respecting position size limits)
    - Entry price (limit order or market)
    - Stop loss price (5% default)
-   - Take profit target (for 2:1 risk/reward)
+   - Take profit target (for 2:1 risk/reward, but multibaggers may take years)
 3. Confidence level (0-1)
-4. Detailed reasoning
+4. Detailed reasoning that addresses:
+   - Which Yartseva filters this stock passes/fails
+   - Whether fundamentals support multibagger potential
+   - Whether current timing is good for entry
+   - Key risks and catalysts
 
 Format your response as JSON:
 {{
