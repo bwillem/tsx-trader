@@ -1,9 +1,10 @@
-name: Weekly Fundamental Data Update
+name: Daily Fundamental Data Update
 
 on:
   schedule:
-    # Saturdays at 2:00 AM EST = 7:00 AM UTC (standard time), 6:00 AM UTC (DST)
-    - cron: '0 7 * * 6'  # Every Saturday at 7 AM UTC
+    # Daily at 2:00 AM EST = 7:00 AM UTC (standard time), 6:00 AM UTC (DST)
+    # Processes 6 stocks per day due to Alpha Vantage free tier limits
+    - cron: '0 7 * * *'  # Every day at 7 AM UTC
 
   workflow_dispatch:  # Allow manual trigger
 
