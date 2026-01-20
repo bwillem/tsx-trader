@@ -1,0 +1,101 @@
+name: Database Setup
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'Action to perform'
+        required: true
+        type: choice
+        options:
+          - migrate
+          - init-stocks
+          - full-setup
+
+jobs:
+  database-migrate:
+    runs-on: ubuntu-latest
+    if: github.event.inputs.action == 'migrate' || github.event.inputs.action == 'full-setup'
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          cd backend
+          pip install -r requirements.txt
+
+      - name: Run database migrations
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          REDIS_URL: ${{ secrets.REDIS_URL }}
+          SECRET_KEY: ${{ secrets.SECRET_KEY }}
+        run: |
+          cd backend
+          alembic upgrade head
+
+      - name: Verify migration
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          cd backend
+          python -c "
+          from app.database import SessionLocal
+          from app.models import User, Stock
+          db = SessionLocal()
+          print(f'Users table exists: {db.query(User).count() >= 0}')
+          print(f'Stocks table exists: {db.query(Stock).count() >= 0}')
+          db.close()
+          "
+
+  init-stocks:
+    runs-on: ubuntu-latest
+    needs: database-migrate
+    if: |
+      always() &&
+      (github.event.inputs.action == 'init-stocks' || github.event.inputs.action == 'full-setup') &&
+      (needs.database-migrate.result == 'success' || needs.database-migrate.result == 'skipped')
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          cd backend
+          pip install -r requirements.txt
+
+      - name: Initialize sample stocks
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          REDIS_URL: ${{ secrets.REDIS_URL }}
+          SECRET_KEY: ${{ secrets.SECRET_KEY }}
+        run: |
+          cd backend
+          python scripts/init-db.py
+
+      - name: Verify stocks
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          SECRET_KEY: ${{ secrets.SECRET_KEY }}
+        run: |
+          cd backend
+          python -c "
+          from app.database import SessionLocal
+          from app.models import Stock
+          db = SessionLocal()
+          stocks = db.query(Stock).all()
+          print(f'Total stocks in database: {len(stocks)}')
+          for stock in stocks[:5]:
+              print(f'  - {stock.symbol}: {stock.name}')
+          db.close()
+          "

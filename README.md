@@ -26,16 +26,35 @@ See [ANALYSIS_ONLY_MODE.md](ANALYSIS_ONLY_MODE.md) for details.
 - **AI**: Claude API (Sonnet 4.5) for trading analysis
 - **Broker**: Questrade API
 
-## Getting Started
+## Deployment Options
 
-### Prerequisites
+### Option 1: GitHub Actions + Cloud Database (Recommended - Free!)
 
+Run scheduled tasks in the cloud without your laptop needing to be on.
+
+**Prerequisites**:
+- GitHub account
+- Neon database (free tier)
+- Upstash Redis (free tier)
+- API keys (Claude, Alpha Vantage, Reddit)
+
+**Cost**: ~$3-6/month (Claude API usage only)
+
+See **[GITHUB_ACTIONS_DEPLOYMENT.md](GITHUB_ACTIONS_DEPLOYMENT.md)** for full setup guide.
+
+### Option 2: Local Docker (Development/Testing)
+
+Run everything on your laptop for development.
+
+**Prerequisites**:
 - Docker and Docker Compose
 - API Keys:
   - Claude API key (from Anthropic)
   - Alpha Vantage API key (free tier available)
   - Reddit API credentials
   - Questrade API credentials
+
+**Note**: Your laptop must be running at 9:30 AM and 4:00 PM EST for scheduled analysis.
 
 ### Setup
 
@@ -109,23 +128,37 @@ PAPER_TRADING_MODE=True               # Start in paper trading mode
 
 ### Reviewing Trading Recommendations
 
-Claude analyzes the market on a schedule and provides recommendations:
+Claude analyzes the market on a schedule and provides recommendations.
 
-1. **View latest recommendations**:
-   ```bash
-   curl -H "Authorization: Bearer YOUR_TOKEN" \
-     http://localhost:8000/api/v1/recommendations/latest
-   ```
+**Quick Check** (with cloud database):
+```bash
+# Set your Neon database URL
+export DATABASE_URL='your-neon-connection-string'
 
-2. **Get actionable recommendations** (high confidence buy/sell):
-   ```bash
-   curl -H "Authorization: Bearer YOUR_TOKEN" \
-     http://localhost:8000/api/v1/recommendations/actionable
-   ```
+# Run the recommendation checker
+python scripts/check_recommendations.py
+```
 
-3. **Review Claude's reasoning** and suggested trade details
+**Via API** (when running backend locally):
+```bash
+# Get latest recommendations
+curl -H "Authorization: Bearer YOUR_TOKEN" \
+  http://localhost:8000/api/v1/recommendations/latest
 
-4. **Execute manually** in Questrade if you agree with the recommendation
+# Get actionable recommendations (high confidence buy/sell)
+curl -H "Authorization: Bearer YOUR_TOKEN" \
+  http://localhost:8000/api/v1/recommendations/actionable
+```
+
+**Via SQL** (Neon dashboard or any Postgres client):
+```sql
+SELECT s.symbol, td.decision, td.confidence, td.reasoning, td.suggested_action
+FROM trading_decisions td JOIN stocks s ON td.stock_id = s.id
+WHERE td.action_taken = false AND td.created_at > NOW() - INTERVAL '24 hours'
+ORDER BY td.confidence DESC;
+```
+
+Then **execute manually** in Questrade if you agree with the recommendation.
 
 See [ANALYSIS_ONLY_MODE.md](ANALYSIS_ONLY_MODE.md) for detailed workflow.
 
