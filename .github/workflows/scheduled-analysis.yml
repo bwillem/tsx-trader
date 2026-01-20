@@ -1,0 +1,106 @@
+name: Scheduled Trading Analysis
+
+on:
+  schedule:
+    # Market open: 9:30 AM EST = 2:30 PM UTC (during standard time)
+    - cron: '30 14 * * 1-5'
+    # Market close: 4:00 PM EST = 9:00 PM UTC
+    - cron: '0 21 * * 1-5'
+    # Sentiment update every 30 minutes during trading hours
+    - cron: '*/30 14-21 * * 1-5'
+    # Market data update every hour
+    - cron: '0 * * * *'
+
+  # Allow manual trigger
+  workflow_dispatch:
+
+jobs:
+  market-data-update:
+    runs-on: ubuntu-latest
+    if: github.event.schedule == '0 * * * *'
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          cd backend
+          pip install -r requirements.txt
+
+      - name: Update market data
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          ALPHA_VANTAGE_API_KEY: ${{ secrets.ALPHA_VANTAGE_API_KEY }}
+        run: |
+          cd backend
+          python -c "
+          from app.tasks.market_data_tasks import update_market_data
+          update_market_data()
+          "
+
+  sentiment-update:
+    runs-on: ubuntu-latest
+    if: github.event.schedule == '*/30 14-21 * * 1-5'
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          cd backend
+          pip install -r requirements.txt
+
+      - name: Update sentiment
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          REDDIT_CLIENT_ID: ${{ secrets.REDDIT_CLIENT_ID }}
+          REDDIT_CLIENT_SECRET: ${{ secrets.REDDIT_CLIENT_SECRET }}
+          REDDIT_USER_AGENT: 'TSXTrader/1.0'
+        run: |
+          cd backend
+          python -c "
+          from app.tasks.sentiment_tasks import update_sentiment_data
+          update_sentiment_data()
+          "
+
+  trading-analysis:
+    runs-on: ubuntu-latest
+    if: github.event.schedule == '30 14 * * 1-5' || github.event.schedule == '0 21 * * 1-5'
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          cd backend
+          pip install -r requirements.txt
+
+      - name: Run trading analysis
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          CLAUDE_API_KEY: ${{ secrets.CLAUDE_API_KEY }}
+          ALPHA_VANTAGE_API_KEY: ${{ secrets.ALPHA_VANTAGE_API_KEY }}
+          REDDIT_CLIENT_ID: ${{ secrets.REDDIT_CLIENT_ID }}
+          REDDIT_CLIENT_SECRET: ${{ secrets.REDDIT_CLIENT_SECRET }}
+        run: |
+          cd backend
+          python -c "
+          from app.tasks.trading_tasks import run_trading_analysis
+          result = run_trading_analysis()
+          print(result)
+          "

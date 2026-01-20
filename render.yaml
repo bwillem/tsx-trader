@@ -1,0 +1,88 @@
+services:
+  # PostgreSQL Database
+  - type: pserv
+    name: tsx-trader-db
+    env: docker
+    plan: starter
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+
+  # Redis
+  - type: redis
+    name: tsx-trader-redis
+    plan: starter
+    maxmemoryPolicy: noeviction
+
+  # Backend API
+  - type: web
+    name: tsx-trader-backend
+    env: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    plan: starter
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: tsx-trader-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          name: tsx-trader-redis
+          type: redis
+          property: connectionString
+      - key: CLAUDE_API_KEY
+        sync: false
+      - key: ALPHA_VANTAGE_API_KEY
+        sync: false
+      - key: REDDIT_CLIENT_ID
+        sync: false
+      - key: REDDIT_CLIENT_SECRET
+        sync: false
+      - key: SECRET_KEY
+        generateValue: true
+
+  # Celery Worker
+  - type: worker
+    name: tsx-trader-celery-worker
+    env: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    dockerCommand: celery -A app.tasks.celery_app worker --loglevel=info
+    plan: starter
+    envVars:
+      - fromService:
+          name: tsx-trader-backend
+          type: web
+
+  # Celery Beat (Scheduler) - THIS IS THE KEY ONE
+  - type: worker
+    name: tsx-trader-celery-beat
+    env: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    dockerCommand: celery -A app.tasks.celery_app beat --loglevel=info
+    plan: starter
+    envVars:
+      - fromService:
+          name: tsx-trader-backend
+          type: web
+
+  # Frontend (optional)
+  - type: web
+    name: tsx-trader-frontend
+    env: docker
+    dockerfilePath: ./frontend/Dockerfile
+    dockerContext: ./frontend
+    plan: starter
+    envVars:
+      - key: NEXT_PUBLIC_API_URL
+        fromService:
+          name: tsx-trader-backend
+          type: web
+          property: url
+
+databases:
+  - name: tsx-trader-db
+    plan: starter
+    databaseName: tsx_trader
+    user: postgres
