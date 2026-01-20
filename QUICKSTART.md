@@ -48,24 +48,31 @@ docker-compose exec backend python scripts/init-db.py
 
 ### 4. Access Application
 
-- **Frontend Dashboard**: http://localhost:3000
 - **API Documentation**: http://localhost:8000/docs
 - **Backend API**: http://localhost:8000
 
 ### 5. Create Account
 
-1. Open http://localhost:3000
-2. Click "Register"
-3. Create account with email/password
-4. You'll receive a JWT token automatically
+```bash
+# Register via API
+curl -X POST http://localhost:8000/api/v1/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"email":"your@email.com","password":"your-password"}'
+
+# Login to get JWT token
+curl -X POST http://localhost:8000/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"your@email.com","password":"your-password"}'
+```
 
 ### 6. Connect Questrade (Optional)
 
-1. Log in to dashboard
-2. Go to Settings
-3. Click "Connect Questrade"
-4. Complete OAuth flow
-5. Select your practice account
+```bash
+# Get OAuth URL
+curl http://localhost:8000/api/v1/questrade/authorize-url
+
+# Visit the URL in browser to complete OAuth flow
+```
 
 ### 7. Test Market Data Update
 

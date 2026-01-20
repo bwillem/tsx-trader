@@ -16,13 +16,12 @@ See [ANALYSIS_ONLY_MODE.md](ANALYSIS_ONLY_MODE.md) for details.
   - Alpha Vantage for market data and technical indicators
   - Reddit sentiment analysis from r/CanadianInvestor and r/Baystreetbets
 - **Questrade Integration**: OAuth authentication and portfolio monitoring
-- **Dashboard**: Monitor portfolio, positions, and Claude's recommendations
+- **API Access**: REST API with detailed documentation for programmatic access
 
 ## Architecture
 
 - **Backend**: Python, FastAPI, SQLAlchemy, Celery
 - **Database**: PostgreSQL with Redis for caching/queues
-- **Frontend**: Next.js 14, TailwindCSS, shadcn/ui
 - **AI**: Claude API (Sonnet 4.5) for trading analysis
 - **Broker**: Questrade API
 
@@ -81,7 +80,6 @@ Run everything on your laptop for development.
    ```
 
 6. Access the application:
-   - Frontend: http://localhost:3000
    - Backend API: http://localhost:8000
    - API Docs: http://localhost:8000/docs
 
@@ -120,11 +118,12 @@ PAPER_TRADING_MODE=True               # Start in paper trading mode
 
 ### Connecting Questrade
 
-1. Log in to the dashboard
-2. Navigate to Settings
-3. Click "Connect Questrade"
-4. Complete OAuth flow
-5. Your account will be synced automatically
+1. Get the OAuth URL from the API:
+   ```bash
+   curl http://localhost:8000/api/v1/questrade/authorize-url
+   ```
+2. Visit the URL to complete OAuth flow
+3. Your account will be synced automatically
 
 ### Reviewing Trading Recommendations
 
@@ -164,10 +163,10 @@ See [ANALYSIS_ONLY_MODE.md](ANALYSIS_ONLY_MODE.md) for detailed workflow.
 
 ### Monitoring
 
-- **Dashboard**: View portfolio value, P&L, and positions
-- **Trades**: See recent orders and executions
-- **Decisions**: Review Claude's analysis and reasoning
-- **Logs**: Check backend logs for Celery task execution
+- **API**: Query portfolio, positions, and recommendations via REST API
+- **Scripts**: Use `scripts/check_recommendations.py` for quick recommendation views
+- **Database**: Query Neon dashboard directly for detailed analysis
+- **Logs**: Check backend logs (Docker) or GitHub Actions logs (cloud deployment)
 
 ## Background Tasks
 
@@ -238,7 +237,6 @@ docker-compose logs -f
 # View specific service
 docker-compose logs -f backend
 docker-compose logs -f celery_worker
-docker-compose logs -f frontend
 ```
 
 ## Architecture Details
