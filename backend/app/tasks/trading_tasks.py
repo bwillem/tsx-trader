@@ -39,6 +39,19 @@ def run_trading_analysis():
                 # Analyze existing portfolio
                 decisions = trader.analyze_portfolio()
 
+                # If no positions, analyze all active stocks for opportunities
+                if not decisions:
+                    print(f"User {user.email}: No positions, analyzing all stocks...")
+                    stocks = db.query(Stock).filter(Stock.is_active == True).all()
+
+                    for stock in stocks:
+                        try:
+                            decision = trader.analyze_symbol(stock.symbol)
+                            if decision:
+                                decisions.append(decision)
+                        except Exception as e:
+                            print(f"  Error analyzing {stock.symbol}: {e}")
+
                 results[user.email] = {
                     "status": "success",
                     "decisions": len(decisions),
