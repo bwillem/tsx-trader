@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, Date, ForeignKey, Index
+from sqlalchemy import Column, Integer, String, Boolean, Float, Date, ForeignKey, Index
 from sqlalchemy.orm import relationship
 from .base import Base, TimestampMixin
 
@@ -12,7 +12,7 @@ class Stock(Base, TimestampMixin):
     exchange = Column(String, default="TSX")
     sector = Column(String, nullable=True)
     industry = Column(String, nullable=True)
-    is_active = Column(String, default=True)
+    is_active = Column(Boolean, default=True)
 
     # Relationships
     market_data = relationship("MarketDataDaily", back_populates="stock")
