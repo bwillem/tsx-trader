@@ -1,15 +1,16 @@
 name: Market Data & Sentiment Updates
 
 on:
-  schedule:
-    # Sentiment update every 30 minutes during trading hours (9 AM - 5 PM EST = 2 PM - 10 PM UTC)
-    - cron: '0,30 14-21 * * 1-5'  # sentiment-update
-
-    # Market data update every hour
-    - cron: '0 * * * *'  # market-data-update
+  # DISABLED: Uncomment when ready to enable automated runs
+  # schedule:
+  #   # Sentiment update every 30 minutes during trading hours (9 AM - 5 PM EST = 2 PM - 10 PM UTC)
+  #   - cron: '0,30 14-21 * * 1-5'  # sentiment-update
+  #
+  #   # Market data update every hour
+  #   - cron: '0 * * * *'  # market-data-update
 
   # Allow manual trigger with input
-  workflow_dispatch:
+  workflow_dispatch:  # Manual trigger only (for now)
     inputs:
       task:
         description: 'Task to run'

@@ -1,12 +1,13 @@
 name: Daily Fundamental Data Update
 
 on:
-  schedule:
-    # Daily at 2:00 AM EST = 7:00 AM UTC (standard time), 6:00 AM UTC (DST)
-    # Processes 6 stocks per day due to Alpha Vantage free tier limits
-    - cron: '0 7 * * *'  # Every day at 7 AM UTC
+  # DISABLED: Uncomment when ready to enable automated runs
+  # schedule:
+  #   # Daily at 2:00 AM EST = 7:00 AM UTC (standard time), 6:00 AM UTC (DST)
+  #   # Processes 6 stocks per day due to Alpha Vantage free tier limits
+  #   - cron: '0 7 * * *'  # Every day at 7 AM UTC
 
-  workflow_dispatch:  # Allow manual trigger
+  workflow_dispatch:  # Manual trigger only (for now)
 
 jobs:
   update-fundamentals:

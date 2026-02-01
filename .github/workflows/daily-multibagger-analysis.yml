@@ -1,14 +1,15 @@
 name: Daily Multibagger Analysis
 
 on:
-  schedule:
-    # Market open: 9:30 AM EST = 2:30 PM UTC (standard time), 1:30 PM UTC (DST)
-    - cron: '30 14 * * 1-5'  # Weekdays at 2:30 PM UTC
+  # DISABLED: Uncomment when fundamental data is populated
+  # schedule:
+  #   # Market open: 9:30 AM EST = 2:30 PM UTC (standard time), 1:30 PM UTC (DST)
+  #   - cron: '30 14 * * 1-5'  # Weekdays at 2:30 PM UTC
+  #
+  #   # Market close: 4:00 PM EST = 9:00 PM UTC (standard time), 8:00 PM UTC (DST)
+  #   - cron: '0 21 * * 1-5'  # Weekdays at 9:00 PM UTC
 
-    # Market close: 4:00 PM EST = 9:00 PM UTC (standard time), 8:00 PM UTC (DST)
-    - cron: '0 21 * * 1-5'  # Weekdays at 9:00 PM UTC
-
-  workflow_dispatch:  # Allow manual trigger
+  workflow_dispatch:  # Manual trigger only (for now)
 
 jobs:
   multibagger-screening:

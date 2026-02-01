@@ -1,12 +1,13 @@
 name: Monthly Stock Discovery
 
 on:
-  schedule:
-    # 1st of month at 3:00 AM EST = 8:00 AM UTC (standard time), 7:00 AM UTC (DST)
-    - cron: '0 8 1 * *'  # Stock review - 1st of month at 8 AM UTC
-    - cron: '0 9 1 * *'  # New discovery - 1st of month at 9 AM UTC
+  # DISABLED: Uncomment when ready to enable automated runs
+  # schedule:
+  #   # 1st of month at 3:00 AM EST = 8:00 AM UTC (standard time), 7:00 AM UTC (DST)
+  #   - cron: '0 8 1 * *'  # Stock review - 1st of month at 8 AM UTC
+  #   - cron: '0 9 1 * *'  # New discovery - 1st of month at 9 AM UTC
 
-  workflow_dispatch:
+  workflow_dispatch:  # Manual trigger only (for now)
     inputs:
       action:
         description: 'Action to perform'
